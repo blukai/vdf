@@ -13,7 +13,7 @@ type (
 
 	// Lexer holds the lexing state.
 	Lexer struct {
-		Data   string     // the data being scanned
+		src    string     // the data being scanned
 		rPos   int        // current rune position in the input
 		tPos   int        // start position of current token
 		rWidth int        // width of last rune read from input
@@ -48,31 +48,48 @@ func lex(l *Lexer) stateFn {
 		l.emit(LBRACE)
 	case '}':
 		l.emit(RBRACE)
-	case '"': // lex identifier
-	loop:
-		for {
-			switch r := l.next(); {
-			case isAplphameric(r):
-				// absorb
-			default:
-				l.emit(IDENTIFIER)
-				break loop
-			}
-		}
-	case '/': // skip comments
-		for r := l.next(); r != '\r' && r != '\n' && r != eof; {
-			r = l.next()
-		}
-		l.backup()
+	case '"':
 		l.ignore()
+		return lexIdentifier
+	case '/':
+		return lexComment
 	default:
 		switch {
-		case unicode.IsSpace(r): // skip spaces
+		case unicode.IsSpace(r):
 			l.ignore()
 		default:
 			return l.errorf("unrecognized character: %#U", r)
 		}
 	}
+
+	return lex
+}
+
+// lexIdentifier lex an alphanumeric.
+func lexIdentifier(l *Lexer) stateFn {
+loop:
+	for {
+		switch r := l.next(); {
+		case isAplphameric(r):
+			// absorb
+		case r == '"': // ignore closing quote mark
+			l.backup()
+			l.emit(IDENTIFIER)
+			l.next()
+			break loop
+		}
+	}
+
+	return lex
+}
+
+// lexComment ignore comments
+func lexComment(l *Lexer) stateFn {
+	for r := l.next(); r != '\r' && r != '\n' && r != eof; {
+		r = l.next()
+	}
+	l.backup()
+	l.ignore()
 
 	return lex
 }
@@ -86,7 +103,7 @@ func (l *Lexer) backup() {
 
 // emit receives a token type and pushes a new token into the tokens channel.
 func (l *Lexer) emit(typ TokenType) {
-	l.tokens <- Token{typ, l.Data[l.tPos:l.rPos]}
+	l.tokens <- Token{typ, l.src[l.tPos:l.rPos]}
 	l.tPos = l.rPos
 }
 
@@ -105,13 +122,13 @@ func (l *Lexer) ignore() {
 
 // next returns the next rune in the input.
 func (l *Lexer) next() rune {
-	if l.rPos >= len(l.Data) {
+	if l.rPos >= len(l.src) {
 		l.rWidth = 0
 
 		return eof
 	}
 	// rune, width
-	r, w := utf8.DecodeRuneInString(l.Data[l.rPos:])
+	r, w := utf8.DecodeRuneInString(l.src[l.rPos:])
 	l.rWidth = w
 	l.rPos += l.rWidth
 
