@@ -9,15 +9,15 @@ import (
 type (
 	// stateFn represents the state of the lexer as a function that
 	// returns the next state.
-	stateFn func(*Lexer) stateFn
+	stateFn func(*lexer) stateFn
 
-	// Lexer holds the lexing state.
-	Lexer struct {
+	// lexer holds the lexing state.
+	lexer struct {
 		src    string     // the data being scanned
 		rPos   int        // current rune position in the input
 		tPos   int        // start position of current token
 		rWidth int        // width of last rune read from input
-		tokens chan Token // channel of scanned tokens
+		tokens chan token // channel of scanned tokens
 		state  stateFn    // the next lexing function to enter
 	}
 )
@@ -26,11 +26,11 @@ const eof = -1
 
 // -------------------------------------------------------
 
-// Token returns the next token emitted by the Lexer.
+// token returns the next token emitted by the lexer.
 // If called for the first time, makes token channel.
-func (l *Lexer) Token() Token {
+func (l *lexer) token() token {
 	if l.tokens == nil {
-		l.tokens = make(chan Token)
+		l.tokens = make(chan token)
 		go l.run()
 	}
 
@@ -39,7 +39,7 @@ func (l *Lexer) Token() Token {
 
 // -------------------------------------------------------
 
-func lex(l *Lexer) stateFn {
+func lex(l *lexer) stateFn {
 	switch r := l.next(); r {
 	case eof: // end of file
 		l.emit(EOF)
@@ -49,7 +49,7 @@ func lex(l *Lexer) stateFn {
 	case '}':
 		l.emit(RBRACE)
 	case '"':
-		l.ignore()
+		l.ignore() // ignore opening quote mark
 		return lexIdentifier
 	case '/':
 		return lexComment
@@ -66,7 +66,7 @@ func lex(l *Lexer) stateFn {
 }
 
 // lexIdentifier lex an alphanumeric.
-func lexIdentifier(l *Lexer) stateFn {
+func lexIdentifier(l *lexer) stateFn {
 loop:
 	for {
 		switch r := l.next(); {
@@ -83,8 +83,8 @@ loop:
 	return lex
 }
 
-// lexComment ignore comments
-func lexComment(l *Lexer) stateFn {
+// lexComment lex(ignore) comments
+func lexComment(l *lexer) stateFn {
 	for r := l.next(); r != '\r' && r != '\n' && r != eof; {
 		r = l.next()
 	}
@@ -97,31 +97,31 @@ func lexComment(l *Lexer) stateFn {
 // -------------------------------------------------------
 
 // backup steps back one rune. Can only be called once per call of next.
-func (l *Lexer) backup() {
+func (l *lexer) backup() {
 	l.rPos -= l.rWidth
 }
 
 // emit receives a token type and pushes a new token into the tokens channel.
-func (l *Lexer) emit(typ TokenType) {
-	l.tokens <- Token{typ, l.src[l.tPos:l.rPos]}
+func (l *lexer) emit(typ tokenType) {
+	l.tokens <- token{typ, l.src[l.tPos:l.rPos]}
 	l.tPos = l.rPos
 }
 
 // errorf returns an error token and terminates the lexing by passing
-// back a nil pointer that will be the next state, terminating l.Token.
-func (l *Lexer) errorf(format string, args ...interface{}) stateFn {
-	l.tokens <- Token{ILLEGAL, fmt.Sprintf(format, args...)}
+// back a nil pointer that will be the next state, terminating l.token.
+func (l *lexer) errorf(format string, args ...interface{}) stateFn {
+	l.tokens <- token{ILLEGAL, fmt.Sprintf(format, args...)}
 
 	return nil
 }
 
 // ignore skips over the pending input before this point
-func (l *Lexer) ignore() {
+func (l *lexer) ignore() {
 	l.tPos = l.rPos
 }
 
 // next returns the next rune in the input.
-func (l *Lexer) next() rune {
+func (l *lexer) next() rune {
 	if l.rPos >= len(l.src) {
 		l.rWidth = 0
 
@@ -136,7 +136,7 @@ func (l *Lexer) next() rune {
 }
 
 // run lexes the input by executing state functions until the state is nil.
-func (l *Lexer) run() {
+func (l *lexer) run() {
 	for l.state = lex; l.state != nil; {
 		l.state = l.state(l)
 	}

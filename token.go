@@ -1,18 +1,18 @@
 package vdf
 
 type (
-	// TokenType represents a lexical token.
-	TokenType int
-	// Token represents a token and value returned from the lexer.
-	Token struct {
-		Typ TokenType
+	// tokenType represents a lexical token.
+	tokenType int
+	// token represents a token and value returned from the lexer.
+	token struct {
+		Typ tokenType
 		Val string
 	}
 )
 
 // The list of tokens.
 const (
-	ILLEGAL TokenType = iota
+	ILLEGAL tokenType = iota
 	EOF
 	IDENTIFIER
 	LBRACE
